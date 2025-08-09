@@ -171,10 +171,6 @@ def train_one_epoch(model, dataloader, criterion, optimizer, scaler, device, epo
                 'Samples': f'{total_samples}',
                 'Speed': f'{samples_per_sec:.0f}/s'
             })
-            'Acc': f'{current_acc:.3f}',
-            'Samples': f'{total_samples}',
-            'Speed': f'{samples_per_sec:.0f}/s'
-        })
     
     epoch_loss = running_loss / len(dataloader)
     epoch_acc = correct_predictions / total_samples
@@ -233,7 +229,6 @@ def validate_one_epoch(model, dataloader, criterion, device, epoch, total_epochs
                     'Samples': f'{total_samples}',
                     'Speed': f'{samples_per_sec:.0f}/s'
                 })
-            })
     
     epoch_loss = running_loss / len(dataloader)
     epoch_acc = accuracy_score(all_labels, all_predictions)
