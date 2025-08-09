@@ -14,7 +14,7 @@ import os
 class EarlyStopping:
     """Early stopping to prevent overfitting"""
     
-    def __init__(self, patience=7, min_delta=0.001, restore_best_weights=True):
+    def __init__(self, patience=3, min_delta=0.001, restore_best_weights=True):
         self.patience = patience
         self.min_delta = min_delta
         self.restore_best_weights = restore_best_weights
@@ -122,10 +122,14 @@ def train_one_epoch(model, dataloader, criterion, optimizer, scaler, device, epo
     running_loss = 0.0
     correct_predictions = 0
     total_samples = 0
+    epoch_start_time = time.time()
     
-    # Create progress bar
-    pbar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{total_epochs} - Training", 
-                unit="batch", leave=False)
+    # Create enhanced progress bar
+    pbar = tqdm(dataloader, 
+                desc=f"🚂 Epoch {epoch+1:2d}/{total_epochs} [Train]", 
+                unit="batch", 
+                leave=False,
+                bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}')
     
     for batch_idx, (images, labels) in enumerate(pbar):
         images, labels = images.to(device), labels.to(device)
@@ -148,12 +152,20 @@ def train_one_epoch(model, dataloader, criterion, optimizer, scaler, device, epo
         total_samples += labels.size(0)
         correct_predictions += (predicted == labels).sum().item()
         
-        # Update progress bar
+        # Calculate metrics
         current_loss = running_loss / (batch_idx + 1)
         current_acc = correct_predictions / total_samples
+        
+        # Calculate processing speed
+        elapsed_time = time.time() - epoch_start_time
+        samples_per_sec = total_samples / elapsed_time if elapsed_time > 0 else 0
+        
+        # Update progress bar with enhanced info
         pbar.set_postfix({
             'Loss': f'{current_loss:.4f}',
-            'Acc': f'{current_acc:.4f}'
+            'Acc': f'{current_acc:.3f}',
+            'Samples': f'{total_samples}',
+            'Speed': f'{samples_per_sec:.0f}/s'
         })
     
     epoch_loss = running_loss / len(dataloader)
@@ -168,10 +180,14 @@ def validate_one_epoch(model, dataloader, criterion, device, epoch, total_epochs
     running_loss = 0.0
     all_predictions = []
     all_labels = []
+    epoch_start_time = time.time()
     
-    # Create progress bar
-    pbar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{total_epochs} - Validation", 
-                unit="batch", leave=False)
+    # Create enhanced progress bar
+    pbar = tqdm(dataloader, 
+                desc=f"🔍 Epoch {epoch+1:2d}/{total_epochs} [Valid]", 
+                unit="batch", 
+                leave=False,
+                bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}')
     
     with torch.no_grad():
         for batch_idx, (images, labels) in enumerate(pbar):
@@ -189,12 +205,21 @@ def validate_one_epoch(model, dataloader, criterion, device, epoch, total_epochs
             all_predictions.extend(predicted.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
             
-            # Update progress bar
+            # Calculate metrics
             current_loss = running_loss / (batch_idx + 1)
             current_acc = accuracy_score(all_labels, all_predictions)
+            
+            # Calculate processing speed
+            elapsed_time = time.time() - epoch_start_time
+            total_samples = len(all_labels)
+            samples_per_sec = total_samples / elapsed_time if elapsed_time > 0 else 0
+            
+            # Update progress bar with enhanced info
             pbar.set_postfix({
-                'Val Loss': f'{current_loss:.4f}',
-                'Val Acc': f'{current_acc:.4f}'
+                'Loss': f'{current_loss:.4f}',
+                'Acc': f'{current_acc:.3f}',
+                'Samples': f'{total_samples}',
+                'Speed': f'{samples_per_sec:.0f}/s'
             })
     
     epoch_loss = running_loss / len(dataloader)
@@ -209,12 +234,16 @@ def evaluate_model(model, dataloader, device, class_names, save_path=None):
     all_predictions = []
     all_labels = []
     all_probabilities = []
+    eval_start_time = time.time()
     
-    print("Evaluating model...")
-    pbar = tqdm(dataloader, desc="Evaluation", unit="batch")
+    print("🔬 Evaluating model...")
+    pbar = tqdm(dataloader, 
+                desc="📊 Evaluation", 
+                unit="batch",
+                bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}')
     
     with torch.no_grad():
-        for images, labels in pbar:
+        for batch_idx, (images, labels) in enumerate(pbar):
             images, labels = images.to(device), labels.to(device)
             
             with autocast():
@@ -226,6 +255,18 @@ def evaluate_model(model, dataloader, device, class_names, save_path=None):
             all_predictions.extend(predicted.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
             all_probabilities.extend(probabilities.cpu().numpy())
+            
+            # Calculate current accuracy and speed
+            if len(all_labels) > 0:
+                current_acc = accuracy_score(all_labels, all_predictions)
+                elapsed_time = time.time() - eval_start_time
+                samples_per_sec = len(all_labels) / elapsed_time if elapsed_time > 0 else 0
+                
+                pbar.set_postfix({
+                    'Acc': f'{current_acc:.3f}',
+                    'Samples': f'{len(all_labels)}',
+                    'Speed': f'{samples_per_sec:.0f}/s'
+                })
     
     # Calculate metrics
     accuracy = accuracy_score(all_labels, all_predictions)

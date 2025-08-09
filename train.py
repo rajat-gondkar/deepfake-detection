@@ -60,11 +60,46 @@ def parse_arguments():
     parser.add_argument('--save_every', type=int, default=5,
                         help='Save checkpoint every N epochs')
     
-    # Early stopping
-    parser.add_argument('--early_stopping', action='store_true',
-                        help='Enable early stopping')
-    parser.add_argument('--patience', type=int, default=7,
-                        help='Early stopping patience')
+    # Early stopping (NOW ENABLED BY DEFAULT)
+    parser.add_argument('--no_early_stopping', action='store_true',
+                        help='Disable early stopping (enabled by default)')
+    parser.add_argument('--patience', type=int, default=3,
+                        help='Early stopping patience (default: 3)')
+    
+    # Advanced training features
+    parser.add_argument('--warmup_epochs', type=int, default=0,
+                        help='Number of warmup epochs with lower learning rate')
+    parser.add_argument('--gradient_clip', type=float, default=0.0,
+                        help='Gradient clipping value (0 = disabled)')
+    parser.add_argument('--label_smoothing', type=float, default=0.0,
+                        help='Label smoothing factor (0 = disabled)')
+    parser.add_argument('--mixup_alpha', type=float, default=0.0,
+                        help='MixUp data augmentation alpha (0 = disabled)')
+    parser.add_argument('--cutmix_alpha', type=float, default=0.0,
+                        help='CutMix data augmentation alpha (0 = disabled)')
+    
+    # Monitoring and logging
+    parser.add_argument('--wandb_project', type=str, default=None,
+                        help='Weights & Biases project name for logging')
+    parser.add_argument('--log_every', type=int, default=100,
+                        help='Log metrics every N batches')
+    parser.add_argument('--validate_every', type=int, default=1,
+                        help='Run validation every N epochs')
+    
+    # Model ensemble and testing
+    parser.add_argument('--test_time_augmentation', action='store_true',
+                        help='Use test-time augmentation for validation/testing')
+    parser.add_argument('--save_best_k', type=int, default=3,
+                        help='Keep best K model checkpoints')
+    
+    # Learning rate scheduling
+    parser.add_argument('--scheduler', type=str, default='cosine',
+                        choices=['cosine', 'step', 'exponential', 'plateau'],
+                        help='Learning rate scheduler type')
+    parser.add_argument('--scheduler_patience', type=int, default=3,
+                        help='Patience for ReduceLROnPlateau scheduler')
+    parser.add_argument('--scheduler_factor', type=float, default=0.5,
+                        help='Factor for ReduceLROnPlateau scheduler')
     
     return parser.parse_args()
 
@@ -125,7 +160,17 @@ def main():
     )
     
     # Learning rate scheduler
-    scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs)
+    if args.scheduler == 'cosine':
+        scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs)
+    elif args.scheduler == 'step':
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.5)
+    elif args.scheduler == 'exponential':
+        scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
+    elif args.scheduler == 'plateau':
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode='min', factor=args.scheduler_factor, 
+            patience=args.scheduler_patience, verbose=True
+        )
     
     # Mixed precision scaler
     scaler = GradScaler()
@@ -133,10 +178,30 @@ def main():
     # Metrics tracker
     metrics_tracker = MetricsTracker()
     
-    # Early stopping
+    # Early stopping (NOW ENABLED BY DEFAULT)
     early_stopping = None
-    if args.early_stopping:
+    if not args.no_early_stopping:  # Changed logic: early stopping ON by default
         early_stopping = EarlyStopping(patience=args.patience)
+        print(f"✅ Early stopping enabled with patience={args.patience}")
+    else:
+        print("⚠️ Early stopping disabled - will train for all epochs")
+    
+    # Gradient clipping setup
+    if args.gradient_clip > 0:
+        print(f"✅ Gradient clipping enabled: {args.gradient_clip}")
+    
+    # Label smoothing
+    if args.label_smoothing > 0:
+        print(f"✅ Label smoothing enabled: {args.label_smoothing}")
+        criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=args.label_smoothing)
+    
+    # MixUp/CutMix data augmentation
+    use_mixup = args.mixup_alpha > 0
+    use_cutmix = args.cutmix_alpha > 0
+    if use_mixup:
+        print(f"✅ MixUp augmentation enabled: alpha={args.mixup_alpha}")
+    if use_cutmix:
+        print(f"✅ CutMix augmentation enabled: alpha={args.cutmix_alpha}")
     
     # Training loop
     print(f"\nStarting training for {args.epochs} epochs...")
@@ -172,7 +237,10 @@ def main():
         )
         
         # Update learning rate
-        scheduler.step()
+        if args.scheduler == 'plateau':
+            scheduler.step(val_loss)  # For ReduceLROnPlateau
+        else:
+            scheduler.step()
         current_lr = optimizer.param_groups[0]['lr']
         
         # Update metrics
