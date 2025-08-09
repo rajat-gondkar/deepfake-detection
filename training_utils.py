@@ -9,6 +9,58 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support, con
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
+import sys
+
+
+class SimpleProgressBar:
+    """Simple progress bar that writes to stdout without creating multiple lines"""
+    
+    def __init__(self, total, desc="Progress", width=50):
+        self.total = total
+        self.current = 0
+        self.desc = desc
+        self.width = width
+        self.start_time = time.time()
+        
+    def update(self, n=1, postfix=None):
+        self.current += n
+        percent = (self.current / self.total) * 100
+        filled = int(self.width * self.current // self.total)
+        bar = '█' * filled + '░' * (self.width - filled)
+        
+        elapsed = time.time() - self.start_time
+        rate = self.current / elapsed if elapsed > 0 else 0
+        
+        if self.current < self.total:
+            eta = (self.total - self.current) / rate if rate > 0 else 0
+            eta_str = f"{int(eta//60):02d}:{int(eta%60):02d}"
+        else:
+            eta_str = "00:00"
+        
+        postfix_str = ""
+        if postfix:
+            if isinstance(postfix, dict):
+                postfix_str = " | " + " ".join([f"{k}={v}" for k, v in postfix.items()])
+            else:
+                postfix_str = f" | {postfix}"
+        
+        line = f"\r{self.desc}: {percent:5.1f}%|{bar}| {self.current}/{self.total} [{int(elapsed//60):02d}:{int(elapsed%60):02d}<{eta_str}, {rate:.1f}it/s]{postfix_str}"
+        
+        # Ensure line doesn't exceed terminal width
+        if len(line) > 120:
+            line = line[:117] + "..."
+            
+        sys.stdout.write(line)
+        sys.stdout.flush()
+        
+        if self.current >= self.total:
+            sys.stdout.write("\n")
+            sys.stdout.flush()
+    
+    def close(self):
+        if self.current < self.total:
+            sys.stdout.write("\n")
+            sys.stdout.flush()
 
 
 class EarlyStopping:
@@ -125,12 +177,12 @@ def train_one_epoch(model, dataloader, criterion, optimizer, scaler, device, epo
     epoch_start_time = time.time()
     
     # Create simple progress bar
-    pbar = tqdm(dataloader, 
-                desc=f"Epoch {epoch+1:2d}/{total_epochs} [Train]",
-                leave=False,
-                ncols=100)
+    pbar = SimpleProgressBar(
+        total=len(dataloader),
+        desc=f"Epoch {epoch+1:2d}/{total_epochs} [Train]"
+    )
     
-    for batch_idx, (images, labels) in enumerate(pbar):
+    for batch_idx, (images, labels) in enumerate(dataloader):
         images, labels = images.to(device), labels.to(device)
         
         optimizer.zero_grad()
@@ -155,9 +207,13 @@ def train_one_epoch(model, dataloader, criterion, optimizer, scaler, device, epo
         current_loss = running_loss / (batch_idx + 1)
         current_acc = correct_predictions / total_samples
         
-        # Update progress bar with simple postfix
-        pbar.set_postfix(loss=f'{current_loss:.4f}', acc=f'{current_acc:.3f}')
+        # Update progress bar
+        pbar.update(1, postfix={
+            'loss': f'{current_loss:.4f}',
+            'acc': f'{current_acc:.3f}'
+        })
     
+    pbar.close()
     epoch_loss = running_loss / len(dataloader)
     epoch_acc = correct_predictions / total_samples
     
@@ -173,13 +229,13 @@ def validate_one_epoch(model, dataloader, criterion, device, epoch, total_epochs
     epoch_start_time = time.time()
     
     # Create simple progress bar
-    pbar = tqdm(dataloader, 
-                desc=f"Epoch {epoch+1:2d}/{total_epochs} [Valid]",
-                leave=False,
-                ncols=100)
+    pbar = SimpleProgressBar(
+        total=len(dataloader),
+        desc=f"Epoch {epoch+1:2d}/{total_epochs} [Valid]"
+    )
     
     with torch.no_grad():
-        for batch_idx, (images, labels) in enumerate(pbar):
+        for batch_idx, (images, labels) in enumerate(dataloader):
             images, labels = images.to(device), labels.to(device)
             
             # Mixed precision inference
@@ -198,9 +254,13 @@ def validate_one_epoch(model, dataloader, criterion, device, epoch, total_epochs
             current_loss = running_loss / (batch_idx + 1)
             current_acc = accuracy_score(all_labels, all_predictions)
             
-            # Update progress bar with simple postfix
-            pbar.set_postfix(loss=f'{current_loss:.4f}', acc=f'{current_acc:.3f}')
+            # Update progress bar
+            pbar.update(1, postfix={
+                'loss': f'{current_loss:.4f}',
+                'acc': f'{current_acc:.3f}'
+            })
     
+    pbar.close()
     epoch_loss = running_loss / len(dataloader)
     epoch_acc = accuracy_score(all_labels, all_predictions)
     
@@ -216,13 +276,13 @@ def evaluate_model(model, dataloader, device, class_names, save_path=None):
     eval_start_time = time.time()
     
     print("Evaluating model...")
-    pbar = tqdm(dataloader, 
-                desc="Evaluation",
-                leave=False,
-                ncols=100)
+    pbar = SimpleProgressBar(
+        total=len(dataloader),
+        desc="Test Evaluation"
+    )
     
     with torch.no_grad():
-        for batch_idx, (images, labels) in enumerate(pbar):
+        for batch_idx, (images, labels) in enumerate(dataloader):
             images, labels = images.to(device), labels.to(device)
             
             with autocast():
@@ -236,9 +296,13 @@ def evaluate_model(model, dataloader, device, class_names, save_path=None):
             all_probabilities.extend(probabilities.cpu().numpy())
             
             # Update progress bar occasionally
-            if len(all_labels) > 0 and batch_idx % 100 == 0:
+            if len(all_labels) > 0:
                 current_acc = accuracy_score(all_labels, all_predictions)
-                pbar.set_postfix(acc=f'{current_acc:.3f}')
+                pbar.update(1, postfix={'acc': f'{current_acc:.3f}'})
+            else:
+                pbar.update(1)
+    
+    pbar.close()
     
     # Calculate metrics
     accuracy = accuracy_score(all_labels, all_predictions)
