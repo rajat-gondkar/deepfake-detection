@@ -124,15 +124,11 @@ def train_one_epoch(model, dataloader, criterion, optimizer, scaler, device, epo
     total_samples = 0
     epoch_start_time = time.time()
     
-    # Create progress bar with better settings
+    # Create simple progress bar
     pbar = tqdm(dataloader, 
-                desc=f"Epoch {epoch+1:2d}/{total_epochs} [Train]", 
-                unit="batch", 
-                leave=True,
-                dynamic_ncols=True,
-                mininterval=1.0,  # Update at most once per second
-                maxinterval=10.0,  # Force update at least every 10 seconds
-                miniters=50)  # Update at least every 50 iterations
+                desc=f"Epoch {epoch+1:2d}/{total_epochs} [Train]",
+                leave=False,
+                ncols=100)
     
     for batch_idx, (images, labels) in enumerate(pbar):
         images, labels = images.to(device), labels.to(device)
@@ -159,18 +155,8 @@ def train_one_epoch(model, dataloader, criterion, optimizer, scaler, device, epo
         current_loss = running_loss / (batch_idx + 1)
         current_acc = correct_predictions / total_samples
         
-        # Calculate processing speed
-        elapsed_time = time.time() - epoch_start_time
-        samples_per_sec = total_samples / elapsed_time if elapsed_time > 0 else 0
-        
-        # Update progress bar only every 50 batches or at the end
-        if batch_idx % 50 == 0 or batch_idx == len(dataloader) - 1:
-            pbar.set_postfix({
-                'Loss': f'{current_loss:.4f}',
-                'Acc': f'{current_acc:.3f}',
-                'Samples': f'{total_samples}',
-                'Speed': f'{samples_per_sec:.0f}/s'
-            })
+        # Update progress bar with simple postfix
+        pbar.set_postfix(loss=f'{current_loss:.4f}', acc=f'{current_acc:.3f}')
     
     epoch_loss = running_loss / len(dataloader)
     epoch_acc = correct_predictions / total_samples
@@ -186,15 +172,11 @@ def validate_one_epoch(model, dataloader, criterion, device, epoch, total_epochs
     all_labels = []
     epoch_start_time = time.time()
     
-    # Create enhanced progress bar
+    # Create simple progress bar
     pbar = tqdm(dataloader, 
-                desc=f"Epoch {epoch+1:2d}/{total_epochs} [Valid]", 
-                unit="batch", 
-                leave=True,
-                dynamic_ncols=True,
-                mininterval=1.0,
-                maxinterval=10.0,
-                miniters=25)  # Update every 25 iterations for validation
+                desc=f"Epoch {epoch+1:2d}/{total_epochs} [Valid]",
+                leave=False,
+                ncols=100)
     
     with torch.no_grad():
         for batch_idx, (images, labels) in enumerate(pbar):
@@ -216,19 +198,8 @@ def validate_one_epoch(model, dataloader, criterion, device, epoch, total_epochs
             current_loss = running_loss / (batch_idx + 1)
             current_acc = accuracy_score(all_labels, all_predictions)
             
-            # Calculate processing speed
-            elapsed_time = time.time() - epoch_start_time
-            total_samples = len(all_labels)
-            samples_per_sec = total_samples / elapsed_time if elapsed_time > 0 else 0
-            
-            # Update progress bar only every 25 batches or at the end
-            if batch_idx % 25 == 0 or batch_idx == len(dataloader) - 1:
-                pbar.set_postfix({
-                    'Loss': f'{current_loss:.4f}',
-                    'Acc': f'{current_acc:.3f}',
-                    'Samples': f'{total_samples}',
-                    'Speed': f'{samples_per_sec:.0f}/s'
-                })
+            # Update progress bar with simple postfix
+            pbar.set_postfix(loss=f'{current_loss:.4f}', acc=f'{current_acc:.3f}')
     
     epoch_loss = running_loss / len(dataloader)
     epoch_acc = accuracy_score(all_labels, all_predictions)
@@ -246,10 +217,9 @@ def evaluate_model(model, dataloader, device, class_names, save_path=None):
     
     print("Evaluating model...")
     pbar = tqdm(dataloader, 
-                desc="Evaluation", 
-                unit="batch",
-                dynamic_ncols=True,
-                mininterval=1.0)
+                desc="Evaluation",
+                leave=False,
+                ncols=100)
     
     with torch.no_grad():
         for batch_idx, (images, labels) in enumerate(pbar):
@@ -265,17 +235,10 @@ def evaluate_model(model, dataloader, device, class_names, save_path=None):
             all_labels.extend(labels.cpu().numpy())
             all_probabilities.extend(probabilities.cpu().numpy())
             
-            # Calculate current accuracy and speed
-            if len(all_labels) > 0 and batch_idx % 50 == 0:
+            # Update progress bar occasionally
+            if len(all_labels) > 0 and batch_idx % 100 == 0:
                 current_acc = accuracy_score(all_labels, all_predictions)
-                elapsed_time = time.time() - eval_start_time
-                samples_per_sec = len(all_labels) / elapsed_time if elapsed_time > 0 else 0
-                
-                pbar.set_postfix({
-                    'Acc': f'{current_acc:.3f}',
-                    'Samples': f'{len(all_labels)}',
-                    'Speed': f'{samples_per_sec:.0f}/s'
-                })
+                pbar.set_postfix(acc=f'{current_acc:.3f}')
     
     # Calculate metrics
     accuracy = accuracy_score(all_labels, all_predictions)
