@@ -17,11 +17,14 @@ def get_transforms():
     std = [0.229, 0.224, 0.225]
     
     # Training transforms with data augmentation
+    # More aggressive augmentation since we now have cropped faces
     train_transforms = transforms.Compose([
         transforms.Resize((380, 380)),
         transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomRotation(degrees=10),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1, hue=0.1),
+        transforms.RandomRotation(degrees=15),
+        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2, hue=0.1),
+        transforms.RandomGrayscale(p=0.1),
+        transforms.RandomApply([transforms.GaussianBlur(kernel_size=3)], p=0.1),
         transforms.ToTensor(),
         transforms.Normalize(mean=mean, std=std)
     ])
